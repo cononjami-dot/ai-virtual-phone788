@@ -137,6 +137,8 @@ export type VoiceApiConfig = {
     sttModel?: string;
     defaultVoice: string;
     languageBoost?: string;
+    /** Minimax 情绪语气：auto=自动(按文本推断，最生动)，或 happy/sad/angry/... 等固定情绪。缺省按 auto 处理 */
+    emotion?: string;
     customVoices?: { id: string; name: string; createdAt?: number }[];
     enableSTT: boolean;
     enableTTS: boolean;

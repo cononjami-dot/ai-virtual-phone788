@@ -69,7 +69,9 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = TTS_
 
 // ── Minimax TTS ─────────────────────────────────────
 
-// MiniMax voice_setting.emotion 支持的取值（speech-01-turbo/hd、speech-02-turbo/hd 等）。
+// MiniMax voice_setting.emotion 支持的固定取值（speech-01-turbo/hd、speech-02-turbo/hd 等）。
+// 注意：不含 "auto" —— "自动"在 API 层的含义是「不发送 emotion 字段」，
+// 让模型按文本内容自行推断情绪起伏（听感最生动）。填任何固定值都会把语气锁死。
 const MINIMAX_EMOTIONS = new Set([
     "happy", "sad", "angry", "fearful", "disgusted", "surprised", "calm", "neutral", "fluent",
 ]);
@@ -84,9 +86,11 @@ async function synthesizeMinimax(text: string, config: VoiceApiConfig, emotion?:
         vol: 1.0,
         pitch: 0,
     };
-    const normalizedEmotion = emotion?.trim().toLowerCase();
-    if (normalizedEmotion && MINIMAX_EMOTIONS.has(normalizedEmotion)) {
-        voiceSetting.emotion = normalizedEmotion;
+    // 情绪：显式传入优先，否则用配置里的选择。"auto"/空 = 不发送 emotion 字段，
+    // 让 MiniMax 按文本内容自动带起伏（默认，听感最生动）；只有固定情绪才锁定语气。
+    const resolvedEmotion = (emotion ?? config.emotion)?.trim().toLowerCase();
+    if (resolvedEmotion && resolvedEmotion !== "auto" && MINIMAX_EMOTIONS.has(resolvedEmotion)) {
+        voiceSetting.emotion = resolvedEmotion;
     }
 
     const response = await fetchWithTimeout(`${baseUrl}/t2a_v2`, {

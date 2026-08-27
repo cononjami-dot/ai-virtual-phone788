@@ -136,6 +136,19 @@ const MINIMAX_PREVIEW_TEXT: Record<string, string> = {
     Afrikaans: "Hallo, aangename kennis. Dit is 'n Afrikaanse stemvoorbeeld.",
 };
 
+const MINIMAX_EMOTION_OPTIONS = [
+    { value: "auto", label: "自动（按文本推断语气，最生动，推荐）" },
+    { value: "happy", label: "开心" },
+    { value: "sad", label: "悲伤" },
+    { value: "angry", label: "愤怒" },
+    { value: "fearful", label: "害怕" },
+    { value: "disgusted", label: "厌恶" },
+    { value: "surprised", label: "惊讶" },
+    { value: "calm", label: "平静" },
+    { value: "neutral", label: "中性" },
+    { value: "fluent", label: "流畅" },
+];
+
 const DEFAULT_MINIMAX_VOICES = [
     { id: "male-qn-qingse", name: "青涩青年音 (male-qn-qingse)" },
     { id: "female-shaonv", name: "少女音 (female-shaonv)" },
@@ -724,6 +737,19 @@ export function VoiceSettings() {
                                                             <option key={option.value || "default"} value={option.value}>{option.label}</option>
                                                         ))}
                                                     </select>
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="menu-desc ml-1">情绪语气 (Emotion)</label>
+                                                    <select
+                                                        value={config.emotion || "auto"}
+                                                        onChange={(e) => updateConfig(config.id, { emotion: e.target.value })}
+                                                        className="ui-select"
+                                                    >
+                                                        {MINIMAX_EMOTION_OPTIONS.map(option => (
+                                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                                        ))}
+                                                    </select>
+                                                    <span className="menu-desc ml-1">「自动」让模型按文本内容自动带起伏，最生动；选固定情绪会把语气锁定成那一种。</span>
                                                 </div>
                                                 <div className="flex flex-col gap-1">
                                                     <label className="menu-desc ml-1">语音模型 (TTS Model)</label>
