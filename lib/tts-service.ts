@@ -69,9 +69,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = TTS_
 
 // ── Minimax TTS ─────────────────────────────────────
 
-// MiniMax voice_setting.emotion 支持的固定取值（speech-01-turbo/hd、speech-02-turbo/hd 等）。
-// 注意：不含 "auto" —— "自动"在 API 层的含义是「不发送 emotion 字段」，
-// 让模型按文本内容自行推断情绪起伏（听感最生动）。填任何固定值都会把语气锁死。
+// MiniMax voice_setting.emotion 支持的取值（speech-01-turbo/hd、speech-02-turbo/hd 等）。
 const MINIMAX_EMOTIONS = new Set([
     "happy", "sad", "angry", "fearful", "disgusted", "surprised", "calm", "neutral", "fluent",
 ]);
