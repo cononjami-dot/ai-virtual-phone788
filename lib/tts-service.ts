@@ -85,7 +85,7 @@ async function synthesizeMinimax(text: string, config: VoiceApiConfig, emotion?:
         pitch: 0,
     };
     // 情绪：显式传入优先，否则用配置里的选择。"auto"/空 = 不发送 emotion 字段，
-    // 让 MiniMax 按文本内容自动带起伏（默认，听感最生动）；只有固定情绪才锁定语气。
+    // 让模型按文本自动带起伏（听感最生动）；只有固定情绪才锁定语气。
     const resolvedEmotion = (emotion ?? config.emotion)?.trim().toLowerCase();
     if (resolvedEmotion && resolvedEmotion !== "auto" && MINIMAX_EMOTIONS.has(resolvedEmotion)) {
         voiceSetting.emotion = resolvedEmotion;
