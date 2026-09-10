@@ -226,7 +226,7 @@ async function resolveAssemblerInput(
             const coreResultsPromise = retrieveCoreMemoriesForPrompt(characterId, memConfig);
             // Use native timeline as retrieval context (same cross-app data as short-term memory)
             const { wbActivationContext: recentCtx } = prepareShortTermContext(characterId, "moments");
-            const [coreResults, results] = await Promise.all([
+            const [coreResults, results] = await Promise.all([\
                 coreResultsPromise,
                 recentCtx.trim()
                     ? retrieveMemoriesForPrompt(characterId, recentCtx, memConfig)
@@ -894,7 +894,7 @@ async function generateTargetedNPCReply(
     if (!cleaned || cleaned.includes("[不回复]")) return false;
 
     const userName = getUserName(character.id);
-    addMomentComment({
+    const newNpcComment = addMomentComment({
         postId: post.id,
         authorType: "npc",
         authorId: `npc_reply_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -907,6 +907,10 @@ async function generateTargetedNPCReply(
     });
 
     dispatchMomentsUpdated();
+
+    // 当 NPC 生成回复后（例如 NPC 在回复里 @动态主人或反驳），通知动态主人 Char 进行插话/回复判定
+    triggerCharacterReplyIfNeeded(post, [newNpcComment]);
+
     return true;
 }
 
@@ -979,7 +983,7 @@ async function triggerCharacterReply(
     let repliedToUser = false;
 
     while ((match = replyPattern.exec(replyText)) !== null) {
-        const replyToName = match[1].trim();
+        let replyToName = match[1].trim();
         const content = match[2].replace(/\[\/回复[）)\]]*\]?/g, "").trim();
         if (!content) continue;
 
@@ -1006,26 +1010,48 @@ async function triggerCharacterReply(
             }
         }
 
-        // Find the latest comment by this person to get replyToCommentId
-        const latestByTarget = [...visibleExistingComments, ...visibleNewComments]
-            .reverse()
-            .find(c => {
-                const cName = c.authorType === "user"
-                    ? userName
-                    : c.authorType === "npc"
-                        ? c.authorName!
-                        : (chars.find(ch => ch.id === c.authorId)?.name ?? "");
-                return cName === replyToName;
-            });
-        if (latestByTarget) {
-            if (replyToAuthorType === "user" && latestByTarget.authorType !== "user") {
+        // Find the matching comment by author name OR by quoted text snippet
+        const allCandidateComments = [...visibleExistingComments, ...visibleNewComments].reverse();
+        let targetComment = allCandidateComments.find(c => {
+            const cName = c.authorType === "user"
+                ? userName
+                : c.authorType === "npc"
+                    ? c.authorName!
+                    : (chars.find(ch => ch.id === c.authorId)?.name ?? "");
+            return normalizeIdentityName(cName) === normalizeIdentityName(replyToName);
+        });
+
+        // If not matched by name, check if replyToName is a quoted text snippet (e.g. [回复 "原文"])
+        if (!targetComment) {
+            const cleanSnippet = replyToName.replace(/^["'“‘]+|["'”’]+$/g, "").trim();
+            if (cleanSnippet) {
+                targetComment = allCandidateComments.find(c =>
+                    c.content.includes(cleanSnippet) || cleanSnippet.includes(c.content)
+                );
+                if (targetComment) {
+                    if (targetComment.authorType === "user") {
+                        replyToAuthorType = "user";
+                        replyToAuthorId = "user";
+                        replyToName = userName;
+                    } else if (targetComment.authorType === "character") {
+                        replyToAuthorType = "character";
+                        replyToAuthorId = targetComment.authorId;
+                        replyToName = chars.find(c => c.id === targetComment!.authorId)?.name || replyToName;
+                    } else {
+                        replyToAuthorType = "npc";
+                        replyToAuthorId = targetComment.authorName || replyToName;
+                        replyToName = targetComment.authorName || replyToName;
+                    }
+                }
+            }
+        }
+
+        if (targetComment) {
+            if (replyToAuthorType === "user" && targetComment.authorType !== "user") {
                 console.warn(`[Moments] Skipping character reply to fake user target: "${replyToName}"`);
                 continue;
             }
-            replyToCommentId = latestByTarget.id;
-        } else if (replyToAuthorType === "user") {
-            console.warn(`[Moments] Skipping character reply to user without existing target: "${replyToName}"`);
-            continue;
+            replyToCommentId = targetComment.id;
         }
 
         addMomentComment({
@@ -1137,7 +1163,6 @@ export function onUserComment(postId: string): void {
 
     if (latestComment.authorType === "user" && latestComment.replyToAuthorType === "npc") {
         triggerNpcReplyIfNeeded(post, latestComment);
-        return;
     }
 
     triggerCharacterReplyIfNeeded(post, [latestComment]);
