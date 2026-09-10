@@ -226,7 +226,7 @@ async function resolveAssemblerInput(
             const coreResultsPromise = retrieveCoreMemoriesForPrompt(characterId, memConfig);
             // Use native timeline as retrieval context (same cross-app data as short-term memory)
             const { wbActivationContext: recentCtx } = prepareShortTermContext(characterId, "moments");
-            const [coreResults, results] = await Promise.all([\
+            const [coreResults, results] = await Promise.all([
                 coreResultsPromise,
                 recentCtx.trim()
                     ? retrieveMemoriesForPrompt(characterId, recentCtx, memConfig)
@@ -983,7 +983,7 @@ async function triggerCharacterReply(
     let repliedToUser = false;
 
     while ((match = replyPattern.exec(replyText)) !== null) {
-        let replyToName = match[1].trim();
+        const replyToName = match[1].trim();
         const content = match[2].replace(/\[\/回复[）)\]]*\]?/g, "").trim();
         if (!content) continue;
 
@@ -1118,9 +1118,11 @@ function triggerCharacterReplyIfNeeded(
             type: "character_reply",
             postId: post.id,
             characterId: charId,
-            fireAt: Date.now() + (loadMomentsConfig().replyDelaySec + Math.random() * loadMomentsConfig().replyDelaySec * 2) * 1000,
+            fireAt: Date.now() + 1500,
             triggeringCommentIds: visibleTriggeringComments.map(c => c.id),
         });
+        // 立即触发一次轮询执行
+        setTimeout(pollPendingReactions, 1600);
     }
 }
 
@@ -1145,10 +1147,12 @@ function triggerNpcReplyIfNeeded(
         type: "npc_reply",
         postId: post.id,
         characterId: post.authorId,
-        fireAt: Date.now() + (loadMomentsConfig().replyDelaySec + Math.random() * loadMomentsConfig().replyDelaySec * 2) * 1000,
+        fireAt: Date.now() + 1000,
         triggeringCommentIds: [newComment.id],
         targetNpcName,
     });
+    // 立即触发一次轮询执行
+    setTimeout(pollPendingReactions, 1050);
 }
 
 /** Called after user submits a comment — trigger character reply if applicable. */
@@ -1434,7 +1438,7 @@ function dispatchMomentsUpdated(): void {
 function startReactionPoll() {
     if (cancelReactionPoll) return;
     pollPendingReactions();                                   // fire immediately on start
-    cancelReactionPoll = bgSetInterval(pollPendingReactions, 30000);
+    cancelReactionPoll = bgSetInterval(pollPendingReactions, 5000);
 }
 
 function stopReactionPoll() {
