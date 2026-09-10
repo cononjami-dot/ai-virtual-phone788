@@ -894,7 +894,7 @@ async function generateTargetedNPCReply(
     if (!cleaned || cleaned.includes("[不回复]")) return false;
 
     const userName = getUserName(character.id);
-    addMomentComment({
+    const newNpcComment = addMomentComment({
         postId: post.id,
         authorType: "npc",
         authorId: `npc_reply_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -907,6 +907,10 @@ async function generateTargetedNPCReply(
     });
 
     dispatchMomentsUpdated();
+
+    // 当 NPC 生成回复后（例如 NPC 在回复里 @动态主人或反驳），通知动态主人 Char 进行插话/回复判定
+    triggerCharacterReplyIfNeeded(post, [newNpcComment]);
+
     return true;
 }
 
