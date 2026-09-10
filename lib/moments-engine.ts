@@ -1010,26 +1010,48 @@ async function triggerCharacterReply(
             }
         }
 
-        // Find the latest comment by this person to get replyToCommentId
-        const latestByTarget = [...visibleExistingComments, ...visibleNewComments]
-            .reverse()
-            .find(c => {
-                const cName = c.authorType === "user"
-                    ? userName
-                    : c.authorType === "npc"
-                        ? c.authorName!
-                        : (chars.find(ch => ch.id === c.authorId)?.name ?? "");
-                return cName === replyToName;
-            });
-        if (latestByTarget) {
-            if (replyToAuthorType === "user" && latestByTarget.authorType !== "user") {
+        // Find the matching comment by author name OR by quoted text snippet
+        const allCandidateComments = [...visibleExistingComments, ...visibleNewComments].reverse();
+        let targetComment = allCandidateComments.find(c => {
+            const cName = c.authorType === "user"
+                ? userName
+                : c.authorType === "npc"
+                    ? c.authorName!
+                    : (chars.find(ch => ch.id === c.authorId)?.name ?? "");
+            return normalizeIdentityName(cName) === normalizeIdentityName(replyToName);
+        });
+
+        // If not matched by name, check if replyToName is a quoted text snippet (e.g. [回复 "原文"])
+        if (!targetComment) {
+            const cleanSnippet = replyToName.replace(/^["'“‘]+|["'”’]+$/g, "").trim();
+            if (cleanSnippet) {
+                targetComment = allCandidateComments.find(c =>
+                    c.content.includes(cleanSnippet) || cleanSnippet.includes(c.content)
+                );
+                if (targetComment) {
+                    if (targetComment.authorType === "user") {
+                        replyToAuthorType = "user";
+                        replyToAuthorId = "user";
+                        replyToName = userName;
+                    } else if (targetComment.authorType === "character") {
+                        replyToAuthorType = "character";
+                        replyToAuthorId = targetComment.authorId;
+                        replyToName = chars.find(c => c.id === targetComment!.authorId)?.name || replyToName;
+                    } else {
+                        replyToAuthorType = "npc";
+                        replyToAuthorId = targetComment.authorName || replyToName;
+                        replyToName = targetComment.authorName || replyToName;
+                    }
+                }
+            }
+        }
+
+        if (targetComment) {
+            if (replyToAuthorType === "user" && targetComment.authorType !== "user") {
                 console.warn(`[Moments] Skipping character reply to fake user target: "${replyToName}"`);
                 continue;
             }
-            replyToCommentId = latestByTarget.id;
-        } else if (replyToAuthorType === "user") {
-            console.warn(`[Moments] Skipping character reply to user without existing target: "${replyToName}"`);
-            continue;
+            replyToCommentId = targetComment.id;
         }
 
         addMomentComment({
