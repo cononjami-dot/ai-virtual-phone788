@@ -664,7 +664,7 @@ async function generateNPCReactionsViaLLM(
             const inlineMatch = content.match(/\[回复\s+(.+?)\]\s*/);
             if (inlineMatch) {
                 inlineReplyName = inlineMatch[1].trim();
-                content = content.replace(inlineMatch[0], "").replace(/\[\/回复[）)\]]*\]?/g, "").trim();
+                content = content.replace(inlineMatch[0], "").replace(/\[\/回复[）)\\]]*\]?/g, "").trim();
             }
 
             // Build reply fields if [回复 xxx] was found
@@ -780,7 +780,7 @@ async function generateAIComment(post: MomentPost, character: Character): Promis
     const replyMatch = /^\[回复\s*(.+?)\]\s*(.+)/s.exec(cleaned);
     if (replyMatch) {
         const replyToName = replyMatch[1].trim();
-        const replyContent = replyMatch[2].replace(/\[\/回复[）)\]]*\]?/g, "").trim();
+        const replyContent = replyMatch[2].replace(/\[\/回复[）)\\]]*\]?/g, "").trim();
         if (replyContent) {
             let replyToAuthorType: "user" | "character" | "npc" = "npc";
             let replyToAuthorId = replyToName;
@@ -983,8 +983,8 @@ async function triggerCharacterReply(
     let repliedToUser = false;
 
     while ((match = replyPattern.exec(replyText)) !== null) {
-        const replyToName = match[1].trim();
-        const content = match[2].replace(/\[\/回复[）)\]]*\]?/g, "").trim();
+        let replyToName = match[1].trim();
+        const content = match[2].replace(/\[\/回复[）)\\]]*\]?/g, "").trim();
         if (!content) continue;
 
         // Resolve replyTo fields
@@ -1183,7 +1183,7 @@ export function parseMomentPostResponse(rawText: string): {
     const text = blockMatch ? blockMatch[1] : rawText;
 
     const explicitPhotoMatch = text.match(/\[照片[:：]\s*(使用参考图|不使用参考图)\s*[:：]\s*([\s\S]*?)\]/);
-    const legacyPhotoMatch = explicitPhotoMatch ? null : text.match(/\[照片[:：]\s*([\s\S]*?)\]/);
+    const legacyPhotoMatch = explicitPhotoMatch ? null : text.match(/\[照片[:：]\s*([\\s\\S]*?)\\]/);
     const photoDescription = explicitPhotoMatch
         ? explicitPhotoMatch[2].trim()
         : legacyPhotoMatch ? legacyPhotoMatch[1].trim() : undefined;
