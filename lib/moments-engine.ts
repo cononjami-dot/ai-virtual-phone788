@@ -1137,7 +1137,6 @@ export function onUserComment(postId: string): void {
 
     if (latestComment.authorType === "user" && latestComment.replyToAuthorType === "npc") {
         triggerNpcReplyIfNeeded(post, latestComment);
-        return;
     }
 
     triggerCharacterReplyIfNeeded(post, [latestComment]);
