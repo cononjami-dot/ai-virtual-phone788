@@ -1956,6 +1956,8 @@ export type ChatCompletionCallbacks = {
     }) => void;
     /** 每轮 LLM 调用解析出思维链（reasoning）时触发，先于该轮 onTextPart */
     onReasoning?: (text: string) => void;
+    /** 每轮 LLM 调用解析出文本增量（流式 token）时触发；提供该回调时本轮自动改走流式请求（SSE），一次 API 调用边生成边推送 */
+    onDelta?: (text: string) => void | Promise<void>;
     onToolExecution?: (results: ToolResult[], historyContent?: string, options?: { toolExecutionId?: string }) => void;
     onNativeToolAssistantTurn?: (turn: {
         content: string;
@@ -2289,14 +2291,21 @@ export async function generateChatCompletion(
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
         let filteredOutput: string;
         try {
-            filteredOutput = await sendLLMRequest(config, preset, llmMessages, regexes, meta, {
-                appId: options?.appId ?? "chat",
-                appTags: requestAppTags,
-                followUpCount: options?.followUpCount,
-                debugSessionId: session.id,
-                signal: options?.signal,
-                onReasoning: callbacks?.onReasoning,
-            });
+            filteredOutput = callbacks?.onDelta
+                ? (await sendLLMStreamRequest(config, preset, llmMessages, regexes, meta, {
+                    appId: options?.appId ?? "chat",
+                    appTags: requestAppTags,
+                    followUpCount: options?.followUpCount,
+                    signal: options?.signal,
+                }, { onDelta: callbacks.onDelta })).content
+                : await sendLLMRequest(config, preset, llmMessages, regexes, meta, {
+                    appId: options?.appId ?? "chat",
+                    appTags: requestAppTags,
+                    followUpCount: options?.followUpCount,
+                    debugSessionId: session.id,
+                    signal: options?.signal,
+                    onReasoning: callbacks?.onReasoning,
+                });
         } catch (err) {
             const errMsg = `⚠️ 回复生成失败: ${err instanceof Error ? err.message : String(err)}`;
             if (parts.length > 0) {
@@ -2454,14 +2463,21 @@ export async function generateChatCompletion(
             // Last round — one final call
             if (round === MAX_TOOL_ROUNDS - 1) {
                 try {
-                    const finalOutput = await sendLLMRequest(config, preset, llmMessages, regexes, meta, {
-                        appId: options?.appId ?? "chat",
-                        appTags: requestAppTags,
-                        followUpCount: options?.followUpCount,
-                        debugSessionId: session.id,
-                        signal: options?.signal,
-                        onReasoning: callbacks?.onReasoning,
-                    });
+                    const finalOutput = callbacks?.onDelta
+     ? (await sendLLMStreamRequest(config, preset, llmMessages, regexes, meta, {
+         appId: options?.appId ?? "chat",
+         appTags: requestAppTags,
+         followUpCount: options?.followUpCount,
+         signal: options?.signal,
+     }, { onDelta: callbacks.onDelta })).content
+     : await sendLLMRequest(config, preset, llmMessages, regexes, meta, {
+         appId: options?.appId ?? "chat",
+         appTags: requestAppTags,
+         followUpCount: options?.followUpCount,
+         debugSessionId: session.id,
+         signal: options?.signal,
+         onReasoning: callbacks?.onReasoning,
+     });
                     throwIfAborted(options?.signal);
                     await callbacks?.onTextPart?.(finalOutput);
                     parts.push({ text: finalOutput });
