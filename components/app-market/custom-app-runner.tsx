@@ -156,14 +156,16 @@ html, body { min-height: 100%; }
   var appId = ${JSON.stringify(app.id)};
   var launchContext = ${JSON.stringify(launchContext ?? null)};
   var pending = {};
+  var streamCbs = {};
   var eventHandlers = {};
   var toolHandlers = {};
   var seq = 0;
-  function request(action, payload){
+  function request(action, payload, onChunk){
     var requestId = frameId + '_' + (++seq);
     parent.postMessage({ source:'ai-phone-custom-app-frame', type:'request', frameId:frameId, appId:appId, requestId:requestId, action:action, payload:payload || {} }, '*');
     return new Promise(function(resolve, reject){
       pending[requestId] = { resolve: resolve, reject: reject };
+      if (typeof onChunk === 'function') streamCbs[requestId] = onChunk;
     });
   }
   window.addEventListener('message', function(event){
@@ -216,10 +218,18 @@ html, body { min-height: 100%; }
       }
       return;
     }
+    if (data.type === 'ai.stream' && data.requestId) {
+      var streamCb = streamCbs[String(data.requestId)];
+      if (streamCb && typeof data.delta === 'string' && data.delta) {
+        try { streamCb(data.delta); } catch (streamErr) { /* APP 内回调异常不影响主流程 */ }
+      }
+      return;
+    }
     if (!data.requestId) return;
     var item = pending[data.requestId];
     if (!item) return;
     delete pending[data.requestId];
+    delete streamCbs[data.requestId];
     if (data.ok) item.resolve(data.result);
     else item.reject(new Error(data.error || 'AiPhone request failed'));
   });
@@ -266,7 +276,7 @@ html, body { min-height: 100%; }
       delete: function(collection, id){ return request('db.delete', { collection: collection, id: id }); }
     },
     ai: {
-      generate: function(payload){ return request('ai.generate', payload || {}); },
+      generate: function(payload, onChunk){ return request('ai.generate', payload || {}, onChunk); },
       generateImage: function(payload){ return request('ai.generateImage', payload || {}); },
       chat: function(payload){ return request('ai.chat', payload || {}); },
       embed: function(payload){ return request('ai.embed', payload || {}); },
@@ -823,6 +833,18 @@ export function CustomAppRunner({
     }, "*");
   }, [frameId]);
 
+  // ai.generate 流式增量：宿主边生成边推给 APP iframe（仅前台运行器）
+  const postStreamDelta = useCallback((requestId: string, delta: string) => {
+    if (isBackgroundRunner) return;
+    iframeRef.current?.contentWindow?.postMessage({
+      source: "ai-phone-custom-app-host",
+      type: "ai.stream",
+      frameId,
+      requestId,
+      delta,
+    }, "*");
+  }, [frameId, isBackgroundRunner]);
+
   const completeBackgroundEvent = useCallback((result: { ok: boolean; reason: string; errors?: string[] }) => {
     if (!backgroundEvent || backgroundEventCompletedRef.current) return;
     backgroundEventCompletedRef.current = true;
@@ -911,7 +933,7 @@ export function CustomAppRunner({
     throw new Error(`应用未声明权限：${permissions.join(" 或 ")}`);
   }, [app]);
 
-  const handleBridgeRequest = useCallback(async (action: string, payload: unknown): Promise<BridgeResult> => {
+  const handleBridgeRequest = useCallback(async (action: string, payload: unknown, requestId?: string): Promise<BridgeResult> => {
     const record = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
     const launchRecord = launchContext && typeof launchContext === "object" ? launchContext : {};
     const backgroundRecord = launchRecord.origin === "custom_app_background" && !record.origin
@@ -1558,9 +1580,13 @@ export function CustomAppRunner({
     if (action === "ai.generate") {
       requirePermission("ai.generate");
       // 分流只看 APP 显式传参，避免 launchContext 里的 sessionId 误触发群聊模式
-      return isCustomAppGroupGenerateRecord(record)
-        ? generateCustomAppGroupText(app, { ...launchRecord, ...record })
-        : generateCustomAppText(app, { ...launchRecord, ...record });
+      const mergedRecord = { ...launchRecord, ...record };
+      const streamHandlers = requestId && !isBackgroundRunner
+        ? { onDelta: (delta: string) => { postStreamDelta(requestId, delta); } }
+        : undefined;
+      return isCustomAppGroupGenerateRecord(mergedRecord)
+        ? generateCustomAppGroupText(app, mergedRecord)
+        : generateCustomAppText(app, mergedRecord, streamHandlers);
     }
     if (action === "ai.generateImage") {
       requirePermission("ai.generateImage");
@@ -1699,7 +1725,7 @@ export function CustomAppRunner({
     }
 
     throw new Error(`未知 AiPhone 动作：${action}`);
-  }, [app, backgroundEvent, backgroundTool, declaredEvents, declaredToolKeys, getFrameAudioChannel, launchContext, onClose, onNotice, postBackgroundEventIfReady, postBackgroundToolIfReady, postHostEvent, requireAnyPermission, requirePermission]);
+  }, [app, backgroundEvent, backgroundTool, declaredEvents, declaredToolKeys, getFrameAudioChannel, launchContext, onClose, onNotice, postBackgroundEventIfReady, postBackgroundToolIfReady, postHostEvent, postStreamDelta, requireAnyPermission, requirePermission]);
 
   useEffect(() => {
     if (isBackgroundRunner) return undefined;
@@ -1789,7 +1815,7 @@ export function CustomAppRunner({
       const requestId = String(record.requestId ?? "");
       const action = String(record.action ?? "");
       if (!requestId || !action) return;
-      void Promise.resolve(handleBridgeRequest(action, record.payload))
+      void Promise.resolve(handleBridgeRequest(action, record.payload, requestId))
         .then(result => postResponse(requestId, true, result))
         .catch(err => postResponse(requestId, false, undefined, err instanceof Error ? err.message : String(err)));
     };
